@@ -19,6 +19,11 @@ on:
   schedule:
     - cron: "*/10 * * * *"
   workflow_dispatch:
+    inputs:
+      forcar:
+        description: "Publicar mesmo que nada tenha mudado"
+        type: boolean
+        default: false
 
 # Só um deploy por vez: duas publicações seguidas no painel não podem virar
 # duas subidas concorrentes disputando a produção.
@@ -54,11 +59,11 @@ jobs:
           echo "Publicado no ar: ${SHA:-nenhum}"
 
       - name: Nada mudou
-        if: steps.origem.outputs.sha == steps.ar.outputs.sha
+        if: ${{ !inputs.forcar && steps.origem.outputs.sha == steps.ar.outputs.sha }}
         run: echo "O site já está atualizado. Nada a fazer."
 
       - name: Baixar o site
-        if: steps.origem.outputs.sha != steps.ar.outputs.sha
+        if: ${{ inputs.forcar || steps.origem.outputs.sha != steps.ar.outputs.sha }}
         uses: actions/checkout@v4
         with:
           repository: joaoxavier1974/sitejoao
@@ -66,7 +71,7 @@ jobs:
           token: ${{ secrets.SITEJOAO_GH_TOKEN }}
 
       - name: Publicar na Vercel
-        if: steps.origem.outputs.sha != steps.ar.outputs.sha
+        if: ${{ inputs.forcar || steps.origem.outputs.sha != steps.ar.outputs.sha }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
