@@ -34,6 +34,11 @@ concurrency:
 jobs:
   publicar:
     runs-on: ubuntu-latest
+    # A Vercel barra deploys de um projeto que recebeu muitos em pouco tempo, e a
+    # CLI fica esperando um build que nunca começa. Sem este teto a execução ficava
+    # presa por horas e as seguintes empilhavam na fila da concorrência. Falhar em
+    # doze minutos é melhor: o ciclo seguinte tenta de novo sozinho.
+    timeout-minutes: 12
     steps:
       - name: O que está no GitHub
         id: origem
