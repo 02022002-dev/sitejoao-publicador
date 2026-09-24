@@ -1,0 +1,77 @@
+name: Publicar o site
+
+# Por que este repositório existe
+# --------------------------------
+# O site mora em joaoxavier1974/sitejoao, que é conta pessoal de outra pessoa.
+# A Vercel só enxerga repositórios da própria conta e de organizações, então a
+# integração que publicava sozinha a cada commit deixou de existir quando o
+# repositório mudou de dono.
+#
+# A alternativa óbvia seria guardar o token da Vercel lá dentro. Ele não foi
+# guardado: esse token alcança a conta inteira, onde também vivem o Argos e os
+# outros projetos, com as variáveis de ambiente de cada um. Por isso o gatilho
+# mora aqui, num repositório próprio, e o token nunca sai daqui.
+#
+# O preço é a latência: o site atualiza no próximo ciclo, não no instante do
+# commit. Para um site institucional isso não muda nada.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+# Só um deploy por vez: duas publicações seguidas no painel não podem virar
+# duas subidas concorrentes disputando a produção.
+concurrency:
+  group: publicar-sitejoao
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: O que está no GitHub
+        id: origem
+        env:
+          GH_TOKEN: ${{ secrets.SITEJOAO_GH_TOKEN }}
+        run: |
+          SHA=$(gh api repos/joaoxavier1974/sitejoao/commits/main --jq .sha)
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Último commit do site: $SHA"
+
+      - name: O que está no ar
+        id: ar
+        run: |
+          RESP=$(curl -s -H "Authorization: Bearer ${{ secrets.VERCEL_TOKEN }}" \
+            "https://api.vercel.com/v6/deployments?projectId=${{ secrets.VERCEL_PROJECT_ID }}&teamId=${{ secrets.VERCEL_ORG_ID }}&target=production&state=READY&limit=1")
+          SHA=$(printf '%s' "$RESP" | python3 -c "
+          import json,sys
+          d = json.load(sys.stdin)
+          ds = d.get('deployments') or []
+          print((ds[0].get('meta') or {}).get('commit','') if ds else '')
+          ")
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Publicado no ar: ${SHA:-nenhum}"
+
+      - name: Nada mudou
+        if: steps.origem.outputs.sha == steps.ar.outputs.sha
+        run: echo "O site já está atualizado. Nada a fazer."
+
+      - name: Baixar o site
+        if: steps.origem.outputs.sha != steps.ar.outputs.sha
+        uses: actions/checkout@v4
+        with:
+          repository: joaoxavier1974/sitejoao
+          ref: main
+          token: ${{ secrets.SITEJOAO_GH_TOKEN }}
+
+      - name: Publicar na Vercel
+        if: steps.origem.outputs.sha != steps.ar.outputs.sha
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          npx --yes vercel@54.6.1 deploy --prod --yes \
+            --token="${{ secrets.VERCEL_TOKEN }}" \
+            -m commit=${{ steps.origem.outputs.sha }}
+          echo "Publicado o commit ${{ steps.origem.outputs.sha }}"
