@@ -75,6 +75,15 @@ jobs:
           ref: main
           token: ${{ secrets.SITEJOAO_GH_TOKEN }}
 
+      # A Vercel BLOQUEIA deploy cujo autor do commit não pertence à conta dela, e
+      # quem publica pelo painel é o dono do site, que não pertence. O deployment
+      # nasce BLOCKED, sem erro e sem log, e a CLI espera para sempre. Sem o .git
+      # a CLI não manda autor nenhum e o envio vira upload puro, que passa. O
+      # commit continua registrado, no campo `commit` logo abaixo.
+      - name: Tirar a identidade do git do envio
+        if: ${{ inputs.forcar || steps.origem.outputs.sha != steps.ar.outputs.sha }}
+        run: rm -rf .git
+
       - name: Publicar na Vercel
         if: ${{ inputs.forcar || steps.origem.outputs.sha != steps.ar.outputs.sha }}
         env:
